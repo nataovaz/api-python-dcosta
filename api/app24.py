@@ -176,7 +176,7 @@ def process_image(image_data, respostas_corretas, peso):
             status = "Não respondida"
             total_nao_respondidas += 1
 
-        somaDen += peso_pergunta
+        somaDen = peso_pergunta
         resultados[f"Questão {pergunta}"] = {
             "peso": peso_pergunta,
             "resposta_correta": resposta_correta,
@@ -194,7 +194,7 @@ def process_image(image_data, respostas_corretas, peso):
     }
     return result
 
-@app.route('/upload', methods=['POST'])
+@app.route('/api/app24/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
         return jsonify({"error": "Nenhum arquivo enviado"}), 400
@@ -222,4 +222,4 @@ def upload_file():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5002)
+    app.run(port=5002)

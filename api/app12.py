@@ -182,7 +182,7 @@ def process_image(image_data, respostas_corretas, pesos):
         "resultados": resultado_respostas,
     }
 
-@app.route('/upload', methods=['POST'])
+@app.route('/api/app12/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
         return jsonify({"error": "Arquivo não encontrado"}), 400
@@ -210,4 +210,4 @@ def upload_file():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5005)
+    app.run(port=5005)
