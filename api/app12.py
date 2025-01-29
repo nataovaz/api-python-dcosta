@@ -6,7 +6,7 @@ from PIL import Image
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Função para extrair o maior contorno
 def extrairMaiorCtn(img):

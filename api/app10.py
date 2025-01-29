@@ -6,7 +6,7 @@ from PIL import Image
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def extrairMaiorCtn(img):
     imgGray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -15,12 +15,11 @@ def extrairMaiorCtn(img):
     )
     kernel = np.ones((2, 2), np.uint8)
     imgDil = cv.dilate(imgTh, kernel)
-    contours, _ = cv.findContours(
-        imgDil, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE
-    )
+    contours, _ = cv.findContours(imgDil, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
 
+    # Se não encontrar nenhum contorno, retorne (None, None)
     if not contours:
-        raise ValueError("Nenhum contorno encontrado na imagem.")
+        return None, None
 
     maiorCtn = max(contours, key=cv.contourArea)
     x, y, w, h = cv.boundingRect(maiorCtn)
@@ -31,22 +30,26 @@ def extrairMaiorCtn(img):
     return recorte, bbox
 
 def process_image(image_data, respostas_corretas, pesos):
-    # Load the image from the uploaded data
+    # Carrega a imagem
     image = Image.open(io.BytesIO(image_data))
     image = np.array(image)
     if image.ndim == 2:
-        # Grayscale image
         img = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
     else:
         img = cv.cvtColor(image, cv.COLOR_RGB2BGR)
     img = cv.resize(img, (600, 700))
-    imgContours = img.copy()
 
-    # Extract the largest contour
-    try:
-        gabarito, bbox = extrairMaiorCtn(img)
-    except ValueError as e:
-        return {"error": str(e)}
+    # Extrai o maior contorno (gabarito)
+    gabarito, bbox = extrairMaiorCtn(img)
+
+    # Caso não encontre contorno (foto avulsa), retorna pontuação 0
+    if gabarito is None or bbox is None:
+        return {
+            "pontuacao": 0,
+            "acertos": 0,
+            "erros": 0,
+            "resultados": {}
+        }
 
     imgGray2 = cv.cvtColor(gabarito, cv.COLOR_BGR2GRAY)
     imgGray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -56,16 +59,8 @@ def process_image(image_data, respostas_corretas, pesos):
     contours, _ = cv.findContours(
         imgCanny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE
     )
-    cv.drawContours(imgContours, contours, -1, (0, 255, 0), 2)
-    cv.rectangle(
-        img,
-        (bbox[0], bbox[1]),
-        (bbox[0] + bbox[2], bbox[1] + bbox[3]),
-        (0, 255, 0),
-        3,
-    )
 
-    # Define 'campos' and 'resp' as per your code
+    # Define campos e respostas
     campos = [
         (50, 305, 12, 18), (65, 305, 12, 18), (80, 305, 12, 18), (95, 305, 12, 18),
         (50, 335, 12, 18), (65, 335, 12, 18), (80, 335, 12, 18), (95, 335, 12, 18),
@@ -92,22 +87,25 @@ def process_image(image_data, respostas_corretas, pesos):
         '10-A', '10-B', '10-C', '10-D',
     ]
 
-    num_questoes = 10  # Number of questions
+    num_questoes = 10
     opcoes = ['A', 'B', 'C', 'D']
 
-    # Ensure the number of correct answers matches the number of questions
+    # Verifica se tamanho de respostas_corretas corresponde ao número de questões
     if len(respostas_corretas) != num_questoes:
         return {"error": "O número de respostas corretas não corresponde ao número de questões"}
 
-    # Ensure the number of weights matches the number of questions
+    # Converte pesos em inteiros
     try:
         pesos = [int(p) for p in pesos]
     except ValueError:
         return {"error": "Pesos devem ser números inteiros"}
 
+    # Verifica se tamanho de pesos corresponde ao número de questões
     if len(pesos) != num_questoes:
         return {"error": "O número de pesos não corresponde ao número de questões"}
 
+    # Identifica quais campos foram marcados
+    imgTh_shape = imgTh.shape[:2]
     respostas_marcadas = []
     for id, vg in enumerate(campos):
         x = int(vg[0])
@@ -123,7 +121,7 @@ def process_image(image_data, respostas_corretas, pesos):
         if percentual >= 15:
             respostas_marcadas.append(resp[id])
 
-    # Process the marked answers to handle duplicates
+    # Trata questões marcadas mais de uma vez
     marcadas_por_pergunta = {}
     questoes_marcadas_mais_de_uma_vez = set()
 
@@ -138,11 +136,11 @@ def process_image(image_data, respostas_corretas, pesos):
             else:
                 marcadas_por_pergunta[pergunta] = resposta_letra
 
-    # Remove questions marked more than once
+    # Remove questões marcadas mais de uma vez
     for pergunta in questoes_marcadas_mais_de_uma_vez:
         marcadas_por_pergunta.pop(pergunta, None)
 
-    # Prepare correct answers and weights
+    # Monta dicionário de respostas corretas
     respostas_corretas_dict = {}
     for idx, resposta_certa in enumerate(respostas_corretas):
         partes = resposta_certa.split('-')
@@ -151,14 +149,16 @@ def process_image(image_data, respostas_corretas, pesos):
             resposta_letra = partes[1]
             respostas_corretas_dict[pergunta] = resposta_letra
 
+    # Monta dicionário de pesos
     peso_dict = {}
     for idx, p in enumerate(pesos):
-        peso_dict[idx + 1] = p  # Assuming the questions are numbered from 1
+        peso_dict[idx + 1] = p
 
     somaNum = 0
     somaDen = sum(pesos)
     resultado_respostas = {}
 
+    # Calcula pontuação
     for pergunta in range(1, num_questoes + 1):
         resposta_correta = respostas_corretas_dict.get(pergunta)
         peso_pergunta = peso_dict.get(pergunta, 1)
@@ -203,14 +203,14 @@ def upload_file():
     if file.filename == '':
         return jsonify({"error": "Nenhum arquivo selecionado"}), 400
 
-    # Convert respostas_corretas to list
+    # Converte respostas_corretas para lista
     respostas_corretas = respostas_corretas.split(',')
 
-    # Convert pesos to list
+    # Converte pesos para lista
     if pesos:
         pesos = pesos.split(',')
     else:
-        # Default to weights of 1
+        # Se não houver pesos, define todos como '1'
         pesos = ['1'] * len(respostas_corretas)
 
     try:

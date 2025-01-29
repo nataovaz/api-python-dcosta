@@ -6,7 +6,7 @@ from PIL import Image
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def extrairMaiorCtn(img):
     imgGray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -65,7 +65,7 @@ def process_image(image_data, respostas_corretas, peso):
         3,
     )
 
-    # Definir 'campos' e 'resp' conforme o seu código
+    # Definir 'campos' e 'resp' conforme o seu c처digo
     campos = []
     campos.extend([
         (50,250,12,18),(65,250,12,18),(80,250,12,18),(95,250,12,18),
@@ -131,7 +131,7 @@ def process_image(image_data, respostas_corretas, peso):
             else:
                 marcadas_por_pergunta[pergunta] = resposta_letra
 
-    # Remover questões marcadas mais de uma vez
+    # Remover quest천es marcadas mais de uma vez
     for pergunta in questoes_marcadas_mais_de_uma_vez:
         marcadas_por_pergunta.pop(pergunta, None)
 
@@ -173,11 +173,13 @@ def process_image(image_data, respostas_corretas, peso):
                 total_incorretas += 1
         else:
             resposta_marcada = None
-            status = "Não respondida"
+            status = "N찾o respondida"
             total_nao_respondidas += 1
 
-        somaDen = peso_pergunta
-        resultados[f"Questão {pergunta}"] = {
+        somaDen = sum(peso_dict.values())
+        #somaDen = sum(pesos)
+
+        resultados[f"Quest찾o {pergunta}"] = {
             "peso": peso_pergunta,
             "resposta_correta": resposta_correta,
             "resposta_marcada": resposta_marcada,
