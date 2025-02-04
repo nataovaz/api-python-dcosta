@@ -212,13 +212,13 @@
 # if __name__ == '__main__':
 #     app.run(port=5005)
 
-
 from flask import Flask, request, jsonify
 import cv2 as cv
 import numpy as np
 import io
 from PIL import Image
 from flask_cors import CORS
+import base64
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -240,8 +240,8 @@ def extrairMaiorCtn(img):
     x, y, w, h = cv.boundingRect(maiorCtn)
     bbox = [x, y, w, h]
     recorte = img[y : y + h, x : x + w]
+    # Aqui o recorte é redimensionado para 400×750 (como no seu código)
     recorte = cv.resize(recorte, (400, 750))
-
     return recorte, bbox
 
 def process_image(image_data, respostas_corretas, pesos):
@@ -257,13 +257,14 @@ def process_image(image_data, respostas_corretas, pesos):
     # Extrai o maior contorno (gabarito)
     gabarito, bbox = extrairMaiorCtn(img)
 
-    # Caso não encontre contorno (foto avulsa), retorna pontuação 0
+    # Se não encontrar contorno, retorna pontuação 0
     if gabarito is None or bbox is None:
         return {
             "pontuacao": 0,
             "acertos": 0,
             "erros": 0,
-            "resultados": {}
+            "resultados": {},
+            "imagem_resultado": None
         }
 
     imgGray2 = cv.cvtColor(gabarito, cv.COLOR_BGR2GRAY)
@@ -271,13 +272,13 @@ def process_image(image_data, respostas_corretas, pesos):
     imgBlur = cv.GaussianBlur(imgGray, (5, 5), 1)
     imgCanny = cv.Canny(imgBlur, 10, 50)
     ret, imgTh = cv.threshold(imgGray2, 70, 255, cv.THRESH_BINARY_INV)
-    contours, _ = cv.findContours(
-        imgCanny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE
-    )
+    contours, _ = cv.findContours(imgCanny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
 
-    # Define campos e respostas
+    # ========================================================================
+    # DEFINIÇÃO DOS CAMPOS (COORDENADAS) E RÓTULOS PARA 12 QUESTÕES
+    # (Cada questão tem 4 opções – total de 48 campos)
     campos = []
-
+    # Primeira metade (questões 1 a 6)
     campos.append((48,300,18,25))
     campos.append((70,300,18,25))
     campos.append((90,300,18,25))
@@ -298,6 +299,7 @@ def process_image(image_data, respostas_corretas, pesos):
     campos.append((70,450,18,25))
     campos.append((90,450,18,25))
     campos.append((112,450,18,25))
+    # Segunda metade (questões 7 a 12)
     campos.append((168,300,18,25))
     campos.append((190,300,18,25))
     campos.append((210,300,18,25))
@@ -327,109 +329,97 @@ def process_image(image_data, respostas_corretas, pesos):
     campos.append((330,338,18,25))
     campos.append((350,338,18,25))
 
-
-    resp=[]
-
-
-    resp.append(('1-A'))
-    resp.append(('1-B'))
-    resp.append(('1-C'))
-    resp.append(('1-D'))
-    resp.append(('2-A'))
-    resp.append(('2-B'))
-    resp.append(('2-C'))
-    resp.append(('2-D'))
-    resp.append(('3-A'))
-    resp.append(('3-B'))
-    resp.append(('3-C'))
-    resp.append(('3-D'))
-    resp.append(('4-A'))
-    resp.append(('4-B'))
-    resp.append(('4-C'))
-    resp.append(('4-D'))
-    resp.append(('5-A'))
-    resp.append(('5-B'))
-    resp.append(('5-C'))
-    resp.append(('5-D'))
-    resp.append(('6-A'))
-    resp.append(('6-B'))
-    resp.append(('6-C'))
-    resp.append(('6-D'))
-    resp.append(('7-A'))
-    resp.append(('7-B'))
-    resp.append(('7-C'))
-    resp.append(('7-D'))
-    resp.append(('8-A'))
-    resp.append(('8-B'))
-    resp.append(('8-C'))
-    resp.append(('8-D'))
-    resp.append(('9-A'))
-    resp.append(('9-B'))
-    resp.append(('9-C'))
-    resp.append(('9-D'))
-    resp.append(('10-A'))
-    resp.append(('10-B'))
-    resp.append(('10-C'))
-    resp.append(('10-D'))
-    resp.append(('11-A'))
-    resp.append(('11-B'))
-    resp.append(('11-C'))
-    resp.append(('11-D'))
-    resp.append(('12-A'))
-    resp.append(('12-B'))
-    resp.append(('12-C'))
-    resp.append(('12-D'))
+    # Rótulos para cada campo (de "1-A" até "12-D")
+    resp = []
+    resp.append('1-A')
+    resp.append('1-B')
+    resp.append('1-C')
+    resp.append('1-D')
+    resp.append('2-A')
+    resp.append('2-B')
+    resp.append('2-C')
+    resp.append('2-D')
+    resp.append('3-A')
+    resp.append('3-B')
+    resp.append('3-C')
+    resp.append('3-D')
+    resp.append('4-A')
+    resp.append('4-B')
+    resp.append('4-C')
+    resp.append('4-D')
+    resp.append('5-A')
+    resp.append('5-B')
+    resp.append('5-C')
+    resp.append('5-D')
+    resp.append('6-A')
+    resp.append('6-B')
+    resp.append('6-C')
+    resp.append('6-D')
+    resp.append('7-A')
+    resp.append('7-B')
+    resp.append('7-C')
+    resp.append('7-D')
+    resp.append('8-A')
+    resp.append('8-B')
+    resp.append('8-C')
+    resp.append('8-D')
+    resp.append('9-A')
+    resp.append('9-B')
+    resp.append('9-C')
+    resp.append('9-D')
+    resp.append('10-A')
+    resp.append('10-B')
+    resp.append('10-C')
+    resp.append('10-D')
+    resp.append('11-A')
+    resp.append('11-B')
+    resp.append('11-C')
+    resp.append('11-D')
+    resp.append('12-A')
+    resp.append('12-B')
+    resp.append('12-C')
+    resp.append('12-D')
 
     num_questoes = 12
     opcoes = ['A', 'B', 'C', 'D']
 
-    # Verifica se tamanho de respostas_corretas corresponde ao número de questões
+    # Verifica se o tamanho da lista de respostas corretas corresponde ao número de questões
     if len(respostas_corretas) != num_questoes:
         return {"error": "O número de respostas corretas não corresponde ao número de questões"}
 
-    # Converte pesos em inteiros
+    # Converte os pesos para inteiros
     try:
         pesos = [int(p) for p in pesos]
     except ValueError:
         return {"error": "Pesos devem ser números inteiros"}
-
-    # Verifica se tamanho de pesos corresponde ao número de questões
     if len(pesos) != num_questoes:
         return {"error": "O número de pesos não corresponde ao número de questões"}
 
-    # Identifica quais campos foram marcados
-    imgTh_shape = imgTh.shape[:2]
+    # Detecta quais campos foram marcados
     respostas_marcadas = []
     for id, vg in enumerate(campos):
-        x = int(vg[0])
-        y = int(vg[1])
-        w = int(vg[2])
-        h = int(vg[3])
+        x, y, w, h = vg
         campo = imgTh[y : y + h, x : x + w]
         height, width = campo.shape[:2]
         tamanho = height * width
         brancas = cv.countNonZero(campo)
         percentual = round((brancas / tamanho) * 100, 2)
-
         if percentual >= 15:
             respostas_marcadas.append(resp[id])
 
-    # Trata questões marcadas mais de uma vez
+    # Trata questões com marcação múltipla
     marcadas_por_pergunta = {}
     questoes_marcadas_mais_de_uma_vez = set()
-
     for r in respostas_marcadas:
         partes = r.split('-')
         if len(partes) == 2:
             pergunta = int(partes[0])
             resposta_letra = partes[1]
-
             if pergunta in marcadas_por_pergunta:
                 questoes_marcadas_mais_de_uma_vez.add(pergunta)
             else:
                 marcadas_por_pergunta[pergunta] = resposta_letra
 
-    # Remove questões marcadas mais de uma vez
     for pergunta in questoes_marcadas_mais_de_uma_vez:
         marcadas_por_pergunta.pop(pergunta, None)
 
@@ -451,12 +441,11 @@ def process_image(image_data, respostas_corretas, pesos):
     somaDen = sum(pesos)
     resultado_respostas = {}
 
-    # Calcula pontuação
+    # Calcula a pontuação e gera o resultado para cada questão
     for pergunta in range(1, num_questoes + 1):
         resposta_correta = respostas_corretas_dict.get(pergunta)
         peso_pergunta = peso_dict.get(pergunta, 1)
         resposta_marcada = marcadas_por_pergunta.get(pergunta)
-
         if resposta_marcada:
             if resposta_marcada == resposta_correta:
                 somaNum += peso_pergunta
@@ -466,7 +455,6 @@ def process_image(image_data, respostas_corretas, pesos):
         else:
             resposta_marcada = None
             status = "Não respondida"
-
         resultado_respostas[f"Questão {pergunta}"] = {
             "resposta_marcada": resposta_marcada,
             "resposta_correta": resposta_correta,
@@ -482,6 +470,41 @@ def process_image(image_data, respostas_corretas, pesos):
         "erros": somaDen - somaNum,
         "resultados": resultado_respostas,
     }
+
+    # ==========================================================================
+    # ANOTAÇÃO NA IMAGEM – DESENHAR OS MARCADORES COM CORES
+    # ==========================================================================
+    # Define o mapeamento das opções para obter o índice
+    option_mapping = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+    for questao in range(1, num_questoes + 1):
+        resposta_certa = respostas_corretas_dict.get(questao)
+        # Se o aluno respondeu corretamente (sem marcação múltipla)
+        if questao in marcadas_por_pergunta and (marcadas_por_pergunta[questao] == resposta_certa):
+            letra = marcadas_por_pergunta[questao]
+            cor = (0, 255, 0)  # verde para correto
+        else:
+            # Caso não haja resposta ou esteja incorreta, desenha na opção correta em vermelho
+            letra = resposta_certa
+            cor = (0, 0, 255)  # vermelho para incorreto
+        if letra in option_mapping:
+            index = (questao - 1) * 4 + option_mapping[letra]
+            if index < len(campos):
+                (x, y, w, h) = campos[index]
+                center = (int(x + w/2), int(y + h/2))
+                cv.circle(gabarito, center, 10, cor, -1)
+
+    # ==========================================================================
+    # REDIMENSIONAR PARA FORMATO A4
+    # ==========================================================================
+    # Por exemplo, para uma A4 com dimensões 1240×1754 pixels (você pode ajustar conforme necessário)
+    a4_width, a4_height = 1240, 1754
+    gabarito_a4 = cv.resize(gabarito, (a4_width, a4_height), interpolation=cv.INTER_CUBIC)
+
+    # Codifica a imagem anotada (A4) para base64
+    retval, buffer = cv.imencode('.jpg', gabarito_a4)
+    jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+    result["imagem_resultado"] = "data:image/jpeg;base64," + jpg_as_text
+
     return result
 
 @app.route('/api/app10/upload', methods=['POST'])
@@ -503,7 +526,6 @@ def upload_file():
     if pesos:
         pesos = pesos.split(',')
     else:
-        # Se não houver pesos, define todos como '1'
         pesos = ['1'] * len(respostas_corretas)
 
     try:
